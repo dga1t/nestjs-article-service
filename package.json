@@ -1,0 +1,47 @@
+{
+  "name": "nestjs-article-service",
+  "version": "0.0.1",
+  "description": "NestJS Article Service API",
+  "license": "MIT",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "nest build",
+    "format": "prettier --write \"{src,tests}/**/*.ts\"",
+    "lint": "eslint \"{src,tests}/**/*.ts\" --max-warnings=0",
+    "start": "node dist/main.js",
+    "start:dev": "nest start --watch",
+    "start:debug": "nest start --debug --watch",
+    "test": "vitest run",
+    "test:watch": "vitest watch",
+    "test:cov": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@nestjs/common": "^10.3.10",
+    "@nestjs/core": "^10.3.10",
+    "@nestjs/platform-express": "^10.3.10",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^10.4.7",
+    "@nestjs/schematics": "^10.1.2",
+    "@nestjs/testing": "^10.3.10",
+    "@types/node": "^20.14.10",
+    "@typescript-eslint/eslint-plugin": "^7.16.1",
+    "@typescript-eslint/parser": "^7.16.1",
+    "eslint": "^8.57.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-import": "^2.29.1",
+    "eslint-plugin-vitest": "^0.4.1",
+    "prettier": "^3.3.2",
+    "ts-node": "^10.9.2",
+    "tsconfig-paths": "^4.2.0",
+    "typescript": "^5.5.2",
+    "vitest": "^1.6.1",
+    "@vitest/coverage-v8": "^1.6.1",
+    "vite-tsconfig-paths": "^4.3.2"
+  },
+  "engines": {
+    "node": ">=18.17.0"
+  }
+}
