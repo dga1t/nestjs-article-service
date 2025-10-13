@@ -27,6 +27,7 @@ module.exports = {
         alphabetize: { order: 'asc', caseInsensitive: true },
       },
     ],
+    semi: ['error', 'never'],
   },
   settings: {
     'import/resolver': {
@@ -35,4 +36,4 @@ module.exports = {
       },
     },
   },
-};
+}

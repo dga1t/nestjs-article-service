@@ -1,11 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest'
 
-import { AppService } from '../src/app.service';
+import { AppService } from '../src/app.service'
 
 describe('AppService', () => {
   it('returns the health payload', () => {
-    const service = new AppService();
+    const service = new AppService()
 
-    expect(service.getHealth()).toEqual({ status: 'ok' });
-  });
-});
+    expect(service.getHealth()).toEqual({ status: 'ok' })
+  })
+})
