@@ -1,7 +1,7 @@
 import { ConfigService } from '@nestjs/config'
 import { TypeOrmModuleOptions } from '@nestjs/typeorm'
 
-const DEFAULT_DATABASE_URL = 'postgres://postgres:postgres@localhost:5432/nestjs'
+import { DEFAULT_DATABASE_URL } from './database.constants'
 
 export const buildTypeOrmModuleOptions = (
   configService: ConfigService,

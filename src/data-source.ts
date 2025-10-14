@@ -3,7 +3,7 @@ import 'dotenv/config'
 
 import { DataSource } from 'typeorm'
 
-const DEFAULT_DATABASE_URL = 'postgres://postgres:postgres@localhost:5432/nestjs'
+import { DEFAULT_DATABASE_URL } from './config/database.constants'
 
 const databaseUrl = process.env.DATABASE_URL ?? DEFAULT_DATABASE_URL
 const shouldUseSsl = process.env.DATABASE_SSL === 'true'
