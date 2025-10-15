@@ -3,8 +3,10 @@ import { InjectRepository } from '@nestjs/typeorm'
 import { Repository } from 'typeorm'
 
 import { CreateArticleDto } from '../dto/create-article.dto'
+import { ListArticlesDto } from '../dto/list-articles.dto'
 import { UpdateArticleDto } from '../dto/update-article.dto'
 import { ArticleEntity } from '../entities/article.entity'
+import { ArticleListResult } from '../types/article.types'
 
 @Injectable()
 export class ArticlesService {
@@ -13,8 +15,48 @@ export class ArticlesService {
     private readonly articlesRepository: Repository<ArticleEntity>,
   ) {}
 
-  async findAll(): Promise<ArticleEntity[]> {
-    return this.articlesRepository.find({ relations: ['author'] })
+  async findAll(query: ListArticlesDto): Promise<ArticleListResult> {
+    const { page, limit, authorId, publishedFrom, publishedTo, search } = query
+    const skip = (page - 1) * limit
+
+    const queryBuilder = this.articlesRepository
+      .createQueryBuilder('article')
+      .leftJoinAndSelect('article.author', 'author')
+      .orderBy('article.publishedAt', 'DESC', 'NULLS LAST')
+      .addOrderBy('article.createdAt', 'DESC')
+      .where('1 = 1')
+
+    if (authorId) {
+      queryBuilder.andWhere('article.authorId = :authorId', { authorId })
+    }
+    if (publishedFrom) {
+      queryBuilder.andWhere('article.publishedAt >= :publishedFrom', { publishedFrom })
+    }
+    if (publishedTo) {
+      queryBuilder.andWhere('article.publishedAt <= :publishedTo', { publishedTo })
+    }
+
+    const trimmedSearch = search?.trim()
+    if (trimmedSearch) {
+      const sanitizedSearch = trimmedSearch.replace(/[%_]/g, '\\$&')
+      queryBuilder.andWhere(
+        '(article.title ILIKE :search OR article.description ILIKE :search)',
+        { search: `%${sanitizedSearch}%` },
+      )
+    }
+
+    queryBuilder.skip(skip).take(limit)
+
+    const [items, total] = await queryBuilder.getManyAndCount()
+
+    return {
+      items,
+      meta: {
+        page,
+        limit,
+        total,
+      },
+    }
   }
 
   async findById(id: string): Promise<ArticleEntity> {

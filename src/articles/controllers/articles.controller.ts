@@ -1,19 +1,33 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Post, Put, UseGuards } from '@nestjs/common'
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Post,
+  Put,
+  Query,
+  UseGuards,
+} from '@nestjs/common'
 
 import { CurrentUser } from '../../common/decorators/current-user.decorator'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
 import { JwtPayload } from '../../auth/types/auth.types'
 import { CreateArticleDto } from '../dto/create-article.dto'
+import { ListArticlesDto } from '../dto/list-articles.dto'
 import { UpdateArticleDto } from '../dto/update-article.dto'
 import { ArticlesService } from '../services/articles.service'
+import { ArticleListResult } from '../types/article.types'
 
 @Controller('articles')
 export class ArticlesController {
   constructor(private readonly articlesService: ArticlesService) {}
 
   @Get()
-  async findAll() {
-    return this.articlesService.findAll()
+  async findAll(@Query() query: ListArticlesDto): Promise<ArticleListResult> {
+    return this.articlesService.findAll(query)
   }
 
   @Get(':id')

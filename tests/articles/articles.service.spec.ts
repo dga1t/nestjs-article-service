@@ -6,44 +6,110 @@ import { describe, expect, beforeEach, it, vi, Mock } from 'vitest'
 import { ArticlesService } from '../../src/articles/services/articles.service'
 import { ArticleEntity } from '../../src/articles/entities/article.entity'
 import { CreateArticleDto } from '../../src/articles/dto/create-article.dto'
+import { ListArticlesDto } from '../../src/articles/dto/list-articles.dto'
 import { UpdateArticleDto } from '../../src/articles/dto/update-article.dto'
 import { Repository } from 'typeorm'
 
 type ArticlesRepositoryMock = {
-  find: Mock
   findOne: Mock
   create: Mock
   save: Mock
   delete: Mock
+  createQueryBuilder: Mock
+}
+
+type QueryBuilderMock = {
+  leftJoinAndSelect: Mock
+  orderBy: Mock
+  addOrderBy: Mock
+  where: Mock
+  andWhere: Mock
+  skip: Mock
+  take: Mock
+  getManyAndCount: Mock
 }
 
 describe('ArticlesService', () => {
   let service: ArticlesService
   let repository: Repository<ArticleEntity> & ArticlesRepositoryMock
+  let queryBuilder: QueryBuilderMock
 
   beforeEach(() => {
     vi.resetAllMocks()
 
+    queryBuilder = {
+      leftJoinAndSelect: vi.fn().mockReturnThis(),
+      orderBy: vi.fn().mockReturnThis(),
+      addOrderBy: vi.fn().mockReturnThis(),
+      where: vi.fn().mockReturnThis(),
+      andWhere: vi.fn().mockReturnThis(),
+      skip: vi.fn().mockReturnThis(),
+      take: vi.fn().mockReturnThis(),
+      getManyAndCount: vi.fn(),
+    }
+
     repository = {
-      find: vi.fn(),
       findOne: vi.fn(),
       create: vi.fn(),
       save: vi.fn(),
       delete: vi.fn(),
+      createQueryBuilder: vi.fn().mockReturnValue(queryBuilder),
     } as unknown as Repository<ArticleEntity> & ArticlesRepositoryMock
 
     service = new ArticlesService(repository)
   })
 
   describe('findAll', () => {
-    it('returns articles with authors', async () => {
+    it('returns paginated result with defaults', async () => {
       const articles = [{ id: '1' }] as ArticleEntity[]
-      ;(repository.find as Mock).mockResolvedValue(articles)
+      queryBuilder.getManyAndCount.mockResolvedValue([articles, 1])
 
-      const result = await service.findAll()
+      const result = await service.findAll({ page: 1, limit: 10 } as unknown as ListArticlesDto)
 
-      expect(repository.find).toHaveBeenCalledWith({ relations: ['author'] })
-      expect(result).toBe(articles)
+      expect(repository.createQueryBuilder).toHaveBeenCalledWith('article')
+      expect(queryBuilder.leftJoinAndSelect).toHaveBeenCalledWith('article.author', 'author')
+      expect(queryBuilder.orderBy).toHaveBeenCalledWith('article.publishedAt', 'DESC', 'NULLS LAST')
+      expect(queryBuilder.skip).toHaveBeenCalledWith(0)
+      expect(queryBuilder.take).toHaveBeenCalledWith(10)
+      expect(queryBuilder.getManyAndCount).toHaveBeenCalled()
+      expect(result).toEqual({
+        items: articles,
+        meta: { page: 1, limit: 10, total: 1 },
+      })
+    })
+
+    it('applies filters when provided', async () => {
+      queryBuilder.getManyAndCount.mockResolvedValue([[], 0])
+
+      const publishedFrom = new Date('2024-01-01T00:00:00.000Z')
+      const publishedTo = new Date('2024-02-01T00:00:00.000Z')
+
+      await service.findAll(
+        {
+          page: 2,
+          limit: 5,
+          authorId: 'author-id',
+          publishedFrom,
+          publishedTo,
+          search: '  hello ',
+        } as unknown as ListArticlesDto,
+      )
+
+      expect(queryBuilder.andWhere).toHaveBeenCalledWith('article.authorId = :authorId', {
+        authorId: 'author-id',
+      })
+      expect(queryBuilder.andWhere).toHaveBeenCalledWith('article.publishedAt >= :publishedFrom', {
+        publishedFrom,
+      })
+      expect(queryBuilder.andWhere).toHaveBeenCalledWith('article.publishedAt <= :publishedTo', {
+        publishedTo,
+      })
+      expect(queryBuilder.andWhere).toHaveBeenCalledWith(
+        '(article.title ILIKE :search OR article.description ILIKE :search)',
+        { search: '%hello%' },
+      )
+      expect(queryBuilder.skip).toHaveBeenCalledWith(5)
+      expect(queryBuilder.take).toHaveBeenCalledWith(5)
     })
   })
 
