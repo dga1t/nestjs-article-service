@@ -2,15 +2,15 @@ import 'reflect-metadata'
 
 import { ForbiddenException, NotFoundException } from '@nestjs/common'
 import { createHash } from 'crypto'
-import { describe, expect, beforeEach, it, vi, Mock } from 'vitest'
+import { beforeEach, describe, expect, it, vi, Mock } from 'vitest'
+import { Repository } from 'typeorm'
 
-import { ArticlesService } from '../../src/articles/services/articles.service'
-import { ArticleEntity } from '../../src/articles/entities/article.entity'
 import { CreateArticleDto } from '../../src/articles/dto/create-article.dto'
 import { ListArticlesDto } from '../../src/articles/dto/list-articles.dto'
 import { UpdateArticleDto } from '../../src/articles/dto/update-article.dto'
-import { ArticleListResult } from '../../src/articles/types/article.types'
-import { Repository } from 'typeorm'
+import { ArticleEntity } from '../../src/articles/entities/article.entity'
+import { ArticlesService } from '../../src/articles/services/articles.service'
+import { ArticleListResult, ArticleResponse } from '../../src/articles/types/article.types'
 
 const ARTICLE_LIST_SET_KEY = 'articles:list:keys'
 
@@ -42,6 +42,28 @@ type CacheServiceMock = {
   delete: Mock
 }
 
+const makeAuthor = (overrides: Partial<ArticleEntity['author']> = {}) => ({
+  id: 'author-id',
+  email: 'author@example.com',
+  password: 'hash',
+  name: 'Author',
+  createdAt: new Date('2024-01-01T00:00:00.000Z'),
+  updatedAt: new Date('2024-01-01T00:00:00.000Z'),
+  ...overrides,
+})
+
+const makeArticle = (overrides: Partial<ArticleEntity> = {}): ArticleEntity => ({
+  id: 'article-id',
+  title: 'Sample',
+  description: null,
+  publishedAt: new Date('2024-03-01T00:00:00.000Z'),
+  authorId: 'author-id',
+  author: makeAuthor(),
+  createdAt: new Date('2024-03-02T00:00:00.000Z'),
+  updatedAt: new Date('2024-03-03T00:00:00.000Z'),
+  ...overrides,
+})
+
 describe('ArticlesService with caching', () => {
   let service: ArticlesService
   let repository: ArticlesRepositoryMock
@@ -65,12 +87,7 @@ describe('ArticlesService with caching', () => {
     repository = {
       createQueryBuilder: vi.fn().mockReturnValue(queryBuilder),
       findOne: vi.fn(),
-      create: vi.fn((value: unknown) => {
-        if (Array.isArray(value)) {
-          return value as ArticleEntity[]
-        }
-        return { ...(value as object) } as ArticleEntity
-      }),
+      create: vi.fn((value: unknown) => ({ ...(value as Record<string, unknown>) } as ArticleEntity)),
       save: vi.fn(),
       delete: vi.fn(),
     } as unknown as ArticlesRepositoryMock
@@ -92,7 +109,24 @@ describe('ArticlesService with caching', () => {
 
     it('returns cached result when available', async () => {
       const cachedResult: ArticleListResult = {
-        items: [{ id: '1', title: 'Cached' } as ArticleEntity],
+        items: [
+          {
+            id: '1',
+            title: 'Cached',
+            description: null,
+            publishedAt: null,
+            authorId: 'author-id',
+            author: {
+              id: 'author-id',
+              email: 'author@example.com',
+              name: 'Author',
+              createdAt: '2024-01-01T00:00:00.000Z',
+              updatedAt: '2024-01-01T00:00:00.000Z',
+            },
+            createdAt: '2024-03-02T00:00:00.000Z',
+            updatedAt: '2024-03-03T00:00:00.000Z',
+          },
+        ],
         meta: { page: 1, limit: 10, total: 1 },
       }
       ;(cache.get as Mock).mockResolvedValue(cachedResult)
@@ -101,15 +135,12 @@ describe('ArticlesService with caching', () => {
 
       expect(cache.get).toHaveBeenCalled()
       expect(repository.createQueryBuilder).not.toHaveBeenCalled()
-      expect(result).toEqual({
-        items: cachedResult.items,
-        meta: cachedResult.meta,
-      })
+      expect(result).toEqual(cachedResult)
     })
 
     it('queries database and caches result when not cached', async () => {
-      const articles = [{ id: '1' } as ArticleEntity]
-      queryBuilder.getManyAndCount.mockResolvedValue([articles, 1])
+      const articleEntity = makeArticle({ id: '1' })
+      queryBuilder.getManyAndCount.mockResolvedValue([[articleEntity], 1])
 
       const result = await service.findAll(baseQuery)
 
@@ -124,13 +155,37 @@ describe('ArticlesService with caching', () => {
         .digest('hex')
       const expectedKey = `articles:list:1:10:${filtersHash}`
 
+      const expectedItem: ArticleResponse = {
+        id: '1',
+        title: 'Sample',
+        description: null,
+        publishedAt: '2024-03-01T00:00:00.000Z',
+        authorId: 'author-id',
+        author: {
+          id: 'author-id',
+          email: 'author@example.com',
+          name: 'Author',
+          createdAt: '2024-01-01T00:00:00.000Z',
+          updatedAt: '2024-01-01T00:00:00.000Z',
+        },
+        createdAt: '2024-03-02T00:00:00.000Z',
+        updatedAt: '2024-03-03T00:00:00.000Z',
+      }
+
       expect(repository.createQueryBuilder).toHaveBeenCalledWith('article')
       expect(queryBuilder.skip).toHaveBeenCalledWith(0)
       expect(queryBuilder.take).toHaveBeenCalledWith(10)
-      expect(cache.set).toHaveBeenCalledWith(expectedKey, result, 60)
+      expect(cache.set).toHaveBeenCalledWith(
+        expectedKey,
+        {
+          items: [expectedItem],
+          meta: { page: 1, limit: 10, total: 1 },
+        },
+        60,
+      )
       expect(cache.addToSet).toHaveBeenCalledWith(ARTICLE_LIST_SET_KEY, expectedKey)
       expect(result).toEqual({
-        items: articles,
+        items: [expectedItem],
         meta: { page: 1, limit: 10, total: 1 },
       })
     })
@@ -170,7 +225,22 @@ describe('ArticlesService with caching', () => {
 
   describe('findById', () => {
     it('returns cached article when available', async () => {
-      const cachedArticle = { id: '1', title: 'Cached article' } as ArticleEntity
+      const cachedArticle: ArticleResponse = {
+        id: '1',
+        title: 'Cached article',
+        description: null,
+        publishedAt: null,
+        authorId: 'author-id',
+        author: {
+          id: 'author-id',
+          email: 'author@example.com',
+          name: null,
+          createdAt: '2024-01-01T00:00:00.000Z',
+          updatedAt: '2024-01-01T00:00:00.000Z',
+        },
+        createdAt: '2024-03-02T00:00:00.000Z',
+        updatedAt: '2024-03-03T00:00:00.000Z',
+      }
       ;(cache.get as Mock).mockResolvedValue(cachedArticle)
 
       const result = await service.findById('1')
@@ -181,7 +251,7 @@ describe('ArticlesService with caching', () => {
     })
 
     it('fetches from database and caches when missing', async () => {
-      const article = { id: '1' } as ArticleEntity
+      const article = makeArticle({ id: '1' })
       ;(cache.get as Mock).mockResolvedValueOnce(null)
       ;(repository.findOne as Mock).mockResolvedValue(article)
 
@@ -191,8 +261,9 @@ describe('ArticlesService with caching', () => {
         where: { id: '1' },
         relations: ['author'],
       })
-      expect(cache.set).toHaveBeenCalledWith('articles:item:1', article, 300)
-      expect(result).toBe(article)
+      expect(cache.set).toHaveBeenCalledWith('articles:item:1', expect.any(Object), 300)
+      expect(result.id).toBe('1')
+      expect(result.author.email).toBe('author@example.com')
     })
 
     it('throws NotFoundException when article does not exist', async () => {
@@ -210,12 +281,12 @@ describe('ArticlesService with caching', () => {
         description: 'Desc',
         publishedAt: null,
       } as unknown as CreateArticleDto
-      const saved = { id: 'uuid-1', authorId: 'author-id' } as ArticleEntity
+      const saved = makeArticle({ id: 'uuid-1', publishedAt: null })
 
       ;(repository.create as Mock).mockReturnValue(saved)
       ;(repository.save as Mock).mockResolvedValue(saved)
       ;(cache.get as Mock).mockResolvedValueOnce(null)
-      ;(repository.findOne as Mock).mockResolvedValue(saved)
+      ;(repository.findOne as Mock).mockResolvedValueOnce(saved)
 
       const result = await service.create('author-id', dto)
 
@@ -223,22 +294,20 @@ describe('ArticlesService with caching', () => {
       expect(cache.getSetMembers).toHaveBeenCalledWith(ARTICLE_LIST_SET_KEY)
       expect(cache.delete).toHaveBeenCalledWith(ARTICLE_LIST_SET_KEY)
       expect(cache.delete).toHaveBeenCalledWith('articles:item:uuid-1')
-      expect(result).toBe(saved)
+      expect(result.id).toBe('uuid-1')
+      expect(result.author.email).toBe('author@example.com')
     })
   })
 
   describe('update', () => {
     it('updates article when user is owner and refreshes cache', async () => {
-      const article = {
-        id: 'uuid-1',
-        authorId: 'author-id',
-        title: 'Old',
-      } as ArticleEntity
+      const article = makeArticle({ id: 'uuid-1', title: 'Old' })
       const payload = { title: 'New' } as UpdateArticleDto
 
       ;(cache.get as Mock).mockResolvedValueOnce(null)
       ;(repository.findOne as Mock).mockResolvedValueOnce(article)
       ;(repository.save as Mock).mockResolvedValue(article)
+      ;(cache.get as Mock).mockResolvedValueOnce(null)
       ;(repository.findOne as Mock).mockResolvedValueOnce({ ...article, title: 'New' })
 
       const result = await service.update('author-id', 'uuid-1', payload)
@@ -250,7 +319,7 @@ describe('ArticlesService with caching', () => {
     })
 
     it('throws when user is not the owner', async () => {
-      const article = { id: 'uuid-1', authorId: 'other' } as ArticleEntity
+      const article = makeArticle({ authorId: 'other' })
       ;(cache.get as Mock).mockResolvedValueOnce(null)
       ;(repository.findOne as Mock).mockResolvedValue(article)
 
@@ -262,7 +331,7 @@ describe('ArticlesService with caching', () => {
 
   describe('delete', () => {
     it('deletes article and clears caches', async () => {
-      const article = { id: 'uuid-1', authorId: 'author-id' } as ArticleEntity
+      const article = makeArticle({ id: 'uuid-1' })
       ;(cache.get as Mock).mockResolvedValueOnce(null)
       ;(repository.findOne as Mock).mockResolvedValue(article)
 
@@ -272,6 +341,14 @@ describe('ArticlesService with caching', () => {
       expect(cache.getSetMembers).toHaveBeenCalledWith(ARTICLE_LIST_SET_KEY)
       expect(cache.delete).toHaveBeenCalledWith('articles:item:uuid-1')
       expect(cache.delete).toHaveBeenCalledWith(ARTICLE_LIST_SET_KEY)
+    })
+
+    it('throws when user is not owner', async () => {
+      const article = makeArticle({ authorId: 'another-id' })
+      ;(cache.get as Mock).mockResolvedValueOnce(null)
+      ;(repository.findOne as Mock).mockResolvedValue(article)
+
+      await expect(service.delete('author-id', 'uuid-1')).rejects.toBeInstanceOf(ForbiddenException)
     })
   })
 })

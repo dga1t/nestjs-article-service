@@ -88,8 +88,8 @@ describe('AuthService', () => {
         id: savedUser.id,
         email: savedUser.email,
         name: savedUser.name,
-        createdAt: savedUser.createdAt,
-        updatedAt: savedUser.updatedAt,
+        createdAt: savedUser.createdAt.toISOString(),
+        updatedAt: savedUser.updatedAt.toISOString(),
       })
     })
 
@@ -162,8 +162,8 @@ describe('AuthService', () => {
         id: user.id,
         email: user.email,
         name: user.name,
-        createdAt: user.createdAt,
-        updatedAt: user.updatedAt,
+        createdAt: user.createdAt.toISOString(),
+        updatedAt: user.updatedAt.toISOString(),
       })
     })
 

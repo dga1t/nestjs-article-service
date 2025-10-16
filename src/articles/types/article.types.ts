@@ -1,4 +1,4 @@
-import { ArticleEntity } from '../entities/article.entity'
+import { PublicUser } from '../../auth/types/auth.types'
 
 export interface ArticleListMeta {
   page: number
@@ -6,7 +6,18 @@ export interface ArticleListMeta {
   total: number
 }
 
+export interface ArticleResponse {
+  id: string
+  title: string
+  description: string | null
+  publishedAt: string | null
+  authorId: string
+  author: PublicUser
+  createdAt: string
+  updatedAt: string
+}
+
 export interface ArticleListResult {
-  items: ArticleEntity[]
+  items: ArticleResponse[]
   meta: ArticleListMeta
 }

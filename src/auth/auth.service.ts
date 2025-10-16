@@ -71,8 +71,8 @@ export class AuthService {
       id: user.id,
       email: user.email,
       name: user.name ?? null,
-      createdAt: user.createdAt,
-      updatedAt: user.updatedAt,
+      createdAt: user.createdAt.toISOString(),
+      updatedAt: user.updatedAt.toISOString(),
     }
   }
 }

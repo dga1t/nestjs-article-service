@@ -4,11 +4,12 @@ import { createHash } from 'crypto'
 import { Repository } from 'typeorm'
 
 import { CacheService } from '../../cache/cache.service'
+import { PublicUser } from '../../auth/types/auth.types'
 import { CreateArticleDto } from '../dto/create-article.dto'
 import { ListArticlesDto } from '../dto/list-articles.dto'
 import { UpdateArticleDto } from '../dto/update-article.dto'
 import { ArticleEntity } from '../entities/article.entity'
-import { ArticleListResult } from '../types/article.types'
+import { ArticleListResult, ArticleResponse } from '../types/article.types'
 
 @Injectable()
 export class ArticlesService {
@@ -29,8 +30,7 @@ export class ArticlesService {
     const cached = await this.cacheService.get<ArticleListResult>(cacheKey)
 
     if (cached) {
-      const items = cached.items.map((item) => this.articlesRepository.create(item))
-      return { items, meta: cached.meta }
+      return cached
     }
 
     const { page, limit, authorId, publishedFrom, publishedTo, search } = normalizedQuery
@@ -67,8 +67,9 @@ export class ArticlesService {
     queryBuilder.skip(skip).take(limit)
 
     const [items, total] = await queryBuilder.getManyAndCount()
+    const transformedItems = items.map((item) => this.toArticleResponse(item))
     const result: ArticleListResult = {
-      items,
+      items: transformedItems,
       meta: {
         page,
         limit,
@@ -82,27 +83,21 @@ export class ArticlesService {
     return result
   }
 
-  async findById(id: string): Promise<ArticleEntity> {
+  async findById(id: string): Promise<ArticleResponse> {
     const cacheKey = this.buildArticleCacheKey(id)
-    const cached = await this.cacheService.get<ArticleEntity>(cacheKey)
+    const cached = await this.cacheService.get<ArticleResponse>(cacheKey)
     if (cached) {
-      return this.articlesRepository.create(cached)
+      return cached
     }
 
-    const article = await this.articlesRepository.findOne({
-      where: { id },
-      relations: ['author'],
-    })
-    if (!article) {
-      throw new NotFoundException('Article not found')
-    }
+    const article = await this.getArticleEntityOrFail(id)
+    const transformed = this.toArticleResponse(article)
+    await this.cacheService.set(cacheKey, transformed, ArticlesService.ARTICLE_ITEM_TTL)
 
-    await this.cacheService.set(cacheKey, article, ArticlesService.ARTICLE_ITEM_TTL)
-
-    return article
+    return transformed
   }
 
-  async create(authorId: string, payload: CreateArticleDto): Promise<ArticleEntity> {
+  async create(authorId: string, payload: CreateArticleDto): Promise<ArticleResponse> {
     const article = this.articlesRepository.create({
       title: payload.title,
       description: payload.description ?? null,
@@ -116,9 +111,9 @@ export class ArticlesService {
     return this.findById(savedArticle.id)
   }
 
-  async update(authorId: string, id: string, payload: UpdateArticleDto): Promise<ArticleEntity> {
-    const article = await this.findById(id)
-    this.assertOwnership(authorId, article)
+  async update(authorId: string, id: string, payload: UpdateArticleDto): Promise<ArticleResponse> {
+    const article = await this.getArticleEntityOrFail(id)
+    this.assertOwnership(authorId, article.authorId)
 
     if (payload.title !== undefined) {
       article.title = payload.title
@@ -137,15 +132,15 @@ export class ArticlesService {
   }
 
   async delete(authorId: string, id: string): Promise<void> {
-    const article = await this.findById(id)
-    this.assertOwnership(authorId, article)
+    const article = await this.getArticleEntityOrFail(id)
+    this.assertOwnership(authorId, article.authorId)
 
     await this.articlesRepository.delete(id)
     await this.invalidateArticleCaches(id)
   }
 
-  private assertOwnership(authorId: string, article: ArticleEntity): void {
-    if (article.authorId !== authorId) {
+  private assertOwnership(authorId: string, resourceAuthorId: string): void {
+    if (resourceAuthorId !== authorId) {
       throw new ForbiddenException('You are not allowed to modify this article')
     }
   }
@@ -187,5 +182,39 @@ export class ArticlesService {
     }
     await this.cacheService.delete(ArticlesService.ARTICLE_LIST_SET_KEY)
     await this.cacheService.delete(this.buildArticleCacheKey(articleId))
+  }
+
+  private async getArticleEntityOrFail(id: string): Promise<ArticleEntity> {
+    const article = await this.articlesRepository.findOne({
+      where: { id },
+      relations: ['author'],
+    })
+    if (!article) {
+      throw new NotFoundException('Article not found')
+    }
+
+    return article
+  }
+
+  private toArticleResponse(article: ArticleEntity): ArticleResponse {
+    const author = article.author
+    const sanitizedAuthor: PublicUser = {
+      id: author.id,
+      email: author.email,
+      name: author.name ?? null,
+      createdAt: author.createdAt.toISOString(),
+      updatedAt: author.updatedAt.toISOString(),
+    }
+
+    return {
+      id: article.id,
+      title: article.title,
+      description: article.description ?? null,
+      publishedAt: article.publishedAt ? article.publishedAt.toISOString() : null,
+      authorId: article.authorId,
+      author: sanitizedAuthor,
+      createdAt: article.createdAt.toISOString(),
+      updatedAt: article.updatedAt.toISOString(),
+    }
   }
 }
