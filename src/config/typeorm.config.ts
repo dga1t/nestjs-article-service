@@ -1,21 +1,20 @@
 import { ConfigService } from '@nestjs/config'
 import { TypeOrmModuleOptions } from '@nestjs/typeorm'
 
-import { DEFAULT_DATABASE_URL } from './database.constants'
+import { createDatabaseOptions } from './database.config'
 
 export const buildTypeOrmModuleOptions = (
   configService: ConfigService,
 ): TypeOrmModuleOptions => {
-  const databaseUrl = configService.get<string>('DATABASE_URL') ?? DEFAULT_DATABASE_URL
-  const isProduction = configService.get<string>('NODE_ENV') === 'production'
-  const shouldUseSsl = configService.get<string>('DATABASE_SSL', 'false') === 'true'
+  const baseOptions = createDatabaseOptions({
+    DATABASE_URL: configService.get<string>('DATABASE_URL') ?? undefined,
+    DATABASE_SSL: configService.get<string>('DATABASE_SSL') ?? undefined,
+    NODE_ENV: configService.get<string>('NODE_ENV') ?? undefined,
+  })
 
   return {
-    type: 'postgres',
-    url: databaseUrl,
+    ...baseOptions,
     autoLoadEntities: true,
     synchronize: false,
-    logging: !isProduction,
-    ssl: shouldUseSsl ? { rejectUnauthorized: false } : undefined,
   }
 }
