@@ -4,6 +4,7 @@ import Redis from 'ioredis'
 
 import { REDIS_CLIENT, RedisClient } from './cache.constants'
 import { CacheService } from './cache.service'
+import { createRedisConfig } from '../config/redis.config'
 
 @Global()
 @Module({
@@ -13,7 +14,9 @@ import { CacheService } from './cache.service'
       provide: REDIS_CLIENT,
       inject: [ConfigService],
       useFactory: async (configService: ConfigService): Promise<RedisClient> => {
-        const redisUrl = configService.get<string>('REDIS_URL')
+        const { url: redisUrl } = createRedisConfig({
+          REDIS_URL: configService.get<string>('REDIS_URL') ?? undefined,
+        })
         if (!redisUrl) {
           Logger.warn('REDIS_URL is not configured. Cache is disabled.', 'CacheModule')
           return null
