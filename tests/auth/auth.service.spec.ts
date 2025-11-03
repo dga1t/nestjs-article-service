@@ -17,15 +17,23 @@ import { LoginDto } from '../../src/auth/dto/login.dto'
 import { RegisterDto } from '../../src/auth/dto/register.dto'
 import { UserEntity } from '../../src/users/entities/user.entity'
 
+type QueryBuilderMock = {
+  addSelect: Mock
+  where: Mock
+  getOne: Mock
+}
+
 type RepositoryMock = {
   findOne: Mock
   create: Mock
   save: Mock
+  createQueryBuilder: Mock
 }
 
 describe('AuthService', () => {
   let authService: AuthService
   let usersRepository: Repository<UserEntity> & RepositoryMock
+  let queryBuilder: QueryBuilderMock
   let jwtService: JwtService & { signAsync: Mock }
   let configService: ConfigService & { get: Mock }
 
@@ -33,10 +41,17 @@ describe('AuthService', () => {
     vi.resetAllMocks()
     vi.clearAllMocks()
 
+    queryBuilder = {
+      addSelect: vi.fn().mockReturnThis(),
+      where: vi.fn().mockReturnThis(),
+      getOne: vi.fn(),
+    }
+
     usersRepository = {
       findOne: vi.fn(),
       create: vi.fn(),
       save: vi.fn(),
+      createQueryBuilder: vi.fn().mockReturnValue(queryBuilder),
     } as unknown as Repository<UserEntity> & RepositoryMock
 
     jwtService = {
@@ -110,7 +125,7 @@ describe('AuthService', () => {
         password: 'hashed-password',
       } as UserEntity
 
-      ;(usersRepository.findOne as Mock).mockResolvedValue(user)
+      queryBuilder.getOne.mockResolvedValue(user)
       const compareMock = bcrypt.compare as unknown as Mock
       compareMock.mockResolvedValue(true)
       ;(jwtService.signAsync as Mock).mockResolvedValue('jwt-token')
@@ -127,7 +142,7 @@ describe('AuthService', () => {
 
     it('throws UnauthorizedException when user is missing', async () => {
       const dto = { email: 'missing@example.com', password: 'password123' } as LoginDto
-      ;(usersRepository.findOne as Mock).mockResolvedValue(null)
+      queryBuilder.getOne.mockResolvedValue(null)
 
       await expect(authService.login(dto)).rejects.toThrow('Invalid credentials')
     })
@@ -136,7 +151,7 @@ describe('AuthService', () => {
       const dto = { email: 'user@example.com', password: 'wrong' } as LoginDto
       const user = { id: 'uuid-1', email: dto.email, password: 'hashed-password' } as UserEntity
 
-      ;(usersRepository.findOne as Mock).mockResolvedValue(user)
+      queryBuilder.getOne.mockResolvedValue(user)
       const compareMock = bcrypt.compare as unknown as Mock
       compareMock.mockResolvedValue(false)
 

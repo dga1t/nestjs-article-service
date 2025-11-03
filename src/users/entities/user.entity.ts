@@ -8,7 +8,7 @@ export class UserEntity {
   @Column({ type: 'varchar', unique: true, length: 255 })
   email!: string
 
-  @Column({ type: 'varchar', length: 255 })
+  @Column({ type: 'varchar', length: 255, select: false })
   password!: string
 
   @Column({ type: 'varchar', length: 255, nullable: true })
